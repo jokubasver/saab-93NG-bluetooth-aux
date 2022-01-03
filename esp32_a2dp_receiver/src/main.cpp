@@ -32,6 +32,13 @@ void avrc_metadata_callback(uint8_t data1, const uint8_t *data2) {
   Serial.printf("AVRC metadata rsp: attribute id 0x%x, %s\n", data1, data2);
 }
 
+void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
+  if(state == ESP_A2D_CONNECTION_STATE_CONNECTED){
+    delay(1000);
+    a2dp_sink.play();
+  }
+}
+
 // HFP
 static const char *BT_HF_TAG = "BT_HF";
 const char *c_hf_evt_str[] = {
@@ -112,6 +119,11 @@ void setup() {
   // Metadata
   a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
 
+  // Coonection change callback
+  #ifdef RESUME_AUDIO_ON_CONNECTION
+  a2dp_sink.set_on_connection_state_changed(connection_state_changed);
+  #endif
+
   // HFP
   esp_hf_client_init();
   esp_hf_client_register_callback(bt_hf_client_cb);
@@ -123,10 +135,6 @@ bool muteState = false;
 bool playingStateRequest = true;
 bool playingState = false;
 
-#ifdef RESUME_AUDIO_ON_CONNECTION
-bool resumeAudio = true;
-#endif
-
 String lastContent = "";
 
 long playTime = 0;
@@ -137,11 +145,6 @@ void loop() {
   // Check if we have connection
   if (a2dp_sink.get_connection_state() != ESP_A2D_CONNECTION_STATE_CONNECTED)
   {
-    #ifdef RESUME_AUDIO_ON_CONNECTION
-    // If there is no connection, set resumeAudio to true, so that once there is connection we resume audio playback
-    if(resumeAudio == false) resumeAudio = true;
-    #endif
-    
     // Set digital mute ON and do not handle events.
     digitalWrite(mutePin, 1);
     
@@ -152,17 +155,6 @@ void loop() {
   }
   else
   {
-    #ifdef RESUME_AUDIO_ON_CONNECTION
-    // Once connected, resume audio playback
-    if(resumeAudio == true) 
-    {
-      // Wait for A2DP to initialize fully before resuming playback (otherwise it might not play)
-      delay(1000);
-      a2dp_sink.play();
-      resumeAudio = false;
-    }
-    #endif
-
     // Wait until playing again
     if (playingState)
     {
