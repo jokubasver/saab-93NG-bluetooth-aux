@@ -8,10 +8,19 @@
 
 BluetoothA2DPSink a2dp_sink;
 
-// Use CAN for steering wheel controls
+// -------------------CONFIGURATION-------------------
+// Enable steering wheel controls via CAN
 #define USE_CAN
+
+// Enable Bluetooth auto-reconnect
+#define BT_AUTO_RECONNECT
+
 // Start playing audio immediately after connecting/reconnecting to phone
 #define RESUME_AUDIO_ON_CONNECTION
+
+// Swap left/right audio channels due to this bug: https://github.com/espressif/esp-idf/issues/3399
+#define SWAP_LR
+// ---------------------------------------------------
 
 #ifdef USE_CAN
 struct can_frame canMsg;
@@ -106,12 +115,14 @@ void setup() {
 
   // Enable auto-reconnect
   // See for details: https://github.com/pschatzmann/ESP32-A2DP/wiki/Auto-Reconnect
+  #ifdef BT_AUTO_RECONNECT
   a2dp_sink.set_auto_reconnect(true, false, 1000);
+  #endif
 
   // Swap audio channels due to this bug: https://github.com/espressif/esp-idf/issues/3399
-  // (or is it a bug on my UDA1334A board?)
-  // Set to false if left and right channels are swapped for you
+  #ifdef SWAP_LR
   a2dp_sink.set_swap_lr_channels(true);
+  #endif
 
   // Start the A2DP sink
   a2dp_sink.start("Saab 9-3");  
