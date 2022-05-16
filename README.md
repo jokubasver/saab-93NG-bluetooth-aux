@@ -3,11 +3,14 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
 
 # Features
  - Bluetooth music playback through the wired aux port
+  - Bluetooth Auto-Reconnect feature (when entering the car, or after signal loss)
+  - Play audio immediately after connecting/reconnecting to phone
  - Steering wheel button controls
   - Play / Pause
   - Next / Previous
   - Voice Assistant
   - Accept incoming phone call 
+  - Hang up active phone call 
 
 # First prototype!
 <img src="https://i.imgur.com/RzdHh4H.jpg" width="315" height="auto">
