@@ -271,6 +271,7 @@ void loop() {
           Serial.println("REJECT CALL");
           esp_hf_client_reject_call();
           delay(50);
+          break;
         }
       }
     }
