@@ -2,10 +2,10 @@
 A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bluetooth media playback and steering wheel media control support.
 
 # Features
- - Bluetooth music playback through the wired aux port
+- Bluetooth music playback through the wired aux port
   - Bluetooth Auto-Reconnect feature (when entering the car, or after signal loss)
   - Play audio immediately after connecting/reconnecting to phone
- - Steering wheel button controls
+- Steering wheel button controls
   - Play / Pause
   - Next / Previous
   - Voice Assistant
