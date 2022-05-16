@@ -33,6 +33,8 @@ MCP2515 mcp2515(5);
 // bck_io_num => GPIO 26,
 int mutePin = 2;
 
+int inCall;
+
 // Metadata
 // 0x1 - Song Title
 // 0x2 - Artist
@@ -73,6 +75,14 @@ const char *c_hf_evt_str[] = {
     "LAST_VOICE_TAG_NUMBER_EVT",         /*!< requested number from AG event */
     "RING_IND_EVT",                      /*!< ring indication event */
 };
+// esp_hf_client_callsetup_t
+const char *c_call_setup_str[] = {
+    "NONE",
+    "INCOMING",
+    "OUTGOING_DIALING",
+    "OUTGOING_ALERTING"
+};
+
 void bt_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *param)
 {
     if (event <= ESP_HF_CLIENT_RING_IND_EVT) {
@@ -80,8 +90,19 @@ void bt_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *p
     } else {
         ESP_LOGE(BT_HF_TAG, "APP HFP invalid event %d", event);
     }
-}
 
+    switch (event) {
+    case ESP_HF_CLIENT_CIND_CALL_SETUP_EVT:
+        ESP_LOGE(BT_HF_TAG, "--Call setup indicator %s",
+                 c_call_setup_str[param->call_setup.status]);
+        // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_hf_defs.html#_CPPv426esp_hf_call_setup_status_t
+        // While in call, the status is ESP_HF_CALL_SETUP_STATUS_INCOMING (1)
+        // While there is no call, the status is ESP_HF_CALL_SETUP_STATUS_IDLE (0)
+        if(param->call_setup.status == 1) inCall = 1;
+        if(param->call_setup.status == 0) inCall = 0;
+        break;
+    }
+}
 
 void setup() {
   // Enable serial
@@ -130,15 +151,14 @@ void setup() {
   // Metadata
   a2dp_sink.set_avrc_metadata_callback(avrc_metadata_callback);
 
-  // Coonection change callback
+  // Connection change callback
   #ifdef RESUME_AUDIO_ON_CONNECTION
   a2dp_sink.set_on_connection_state_changed(connection_state_changed);
   #endif
 
   // HFP
-  esp_hf_client_init();
   esp_hf_client_register_callback(bt_hf_client_cb);
-  
+  esp_hf_client_init();
   Serial.println("BT STACK UP!");
 }
 
@@ -237,13 +257,21 @@ void loop() {
           lastVoiceReqTime = millis();
         }
 
-      // Answer phone call
-      // Need a way to detect if we are in an active call, to be able to hang up the phone. 
+      // Answer/reject phone call
       case 0x12:
-        Serial.println("ANSWER CALL");
-        esp_hf_client_answer_call();
-        delay(50);
-        break;
+        if(inCall == 0)
+        {
+          Serial.println("ANSWER CALL");
+          esp_hf_client_answer_call();
+          delay(50);
+          break;
+        }
+        if(inCall == 1)
+        {
+          Serial.println("REJECT CALL");
+          esp_hf_client_reject_call();
+          delay(50);
+        }
       }
     }
   }
