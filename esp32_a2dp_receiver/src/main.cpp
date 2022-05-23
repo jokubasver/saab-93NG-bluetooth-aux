@@ -5,6 +5,7 @@
 #include "soc/rtc.h"
 #include <Wire.h>
 #include "BluetoothA2DPSink.h"
+#include "esp_rom_gpio.h"
 
 BluetoothA2DPSink a2dp_sink;
 
@@ -51,6 +52,50 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
 }
 
 // HFP
+//
+// Configure HFP PCM audio pins (set to I2S DAC pins)
+#define GPIO_OUTPUT_PCM_FSYNC      (25)
+#define GPIO_OUTPUT_PCM_CLK_OUT    (26)
+#define GPIO_OUTPUT_PCM_DOUT       (22)
+#define GPIO_OUTPUT_PCM_PIN_SEL  ((1ULL<<GPIO_OUTPUT_PCM_FSYNC) | (1ULL<<GPIO_OUTPUT_PCM_CLK_OUT) | (1ULL<<GPIO_OUTPUT_PCM_DOUT))
+
+// Enables HFP PCM audio
+void app_gpio_pcm_io_cfg(void)
+{
+    gpio_config_t io_conf;
+    /// configure the PCM output pins
+    //disable interrupt
+    io_conf.intr_type = GPIO_INTR_DISABLE;
+    //set as output mode
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    //bit mask of the pins that you want to set,e.g.GPIO18/19
+    io_conf.pin_bit_mask = GPIO_OUTPUT_PCM_PIN_SEL;
+    //disable pull-down mode
+    io_conf.pull_down_en = (gpio_pulldown_t)0;
+    //disable pull-up mode
+    io_conf.pull_up_en = (gpio_pullup_t)0;
+    //configure GPIO with the given settings
+    gpio_config(&io_conf);
+
+    /// matrix out | in the internal PCM signals to the GPIOs
+    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_FSYNC, PCMFSYNC_OUT_IDX, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_CLK_OUT, PCMCLK_OUT_IDX, false, false);
+    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_DOUT, PCMDOUT_IDX, false, false);
+}
+
+// Disables HFP PCM audio by resetting I2S pins and port back to defaults
+void app_gpio_pcm_io_decfg(void)
+{
+  static const i2s_port_t i2s_num = I2S_NUM_0; // i2s port number
+	static const i2s_pin_config_t pin_config = {
+		.bck_io_num = 26,
+		.ws_io_num = 25,
+		.data_out_num = 22,
+		.data_in_num = I2S_PIN_NO_CHANGE
+	};
+	i2s_set_pin(i2s_num, &pin_config);
+}
+
 static const char *BT_HF_TAG = "BT_HF";
 const char *c_hf_evt_str[] = {
     "CONNECTION_STATE_EVT",              /*!< connection state changed event */
@@ -82,6 +127,13 @@ const char *c_call_setup_str[] = {
     "OUTGOING_DIALING",
     "OUTGOING_ALERTING"
 };
+// esp_hf_client_audio_state_t
+const char *c_audio_state_str[] = {
+    "disconnected",
+    "connecting",
+    "connected",
+    "connected_msbc",
+};
 
 void bt_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *param)
 {
@@ -101,6 +153,22 @@ void bt_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *p
         if(param->call_setup.status == 1) inCall = 1;
         if(param->call_setup.status == 0) inCall = 0;
         break;
+      case ESP_HF_CLIENT_AUDIO_STATE_EVT:
+        {
+            ESP_LOGI(BT_HF_TAG, "--audio state %s",
+                    c_audio_state_str[param->audio_stat.state]);
+	#if CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM
+			      // If in call, enable HFP PCM audio
+            if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED ||
+                param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC) {
+                app_gpio_pcm_io_cfg();
+			      // If not in call, disable HFP PCM audio by resetting I2S
+            } else if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_DISCONNECTED) {
+				        app_gpio_pcm_io_decfg();
+            }
+	#endif
+            break;
+        }
     }
 }
 
