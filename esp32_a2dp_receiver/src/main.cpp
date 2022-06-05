@@ -5,7 +5,6 @@
 #include "soc/rtc.h"
 #include <Wire.h>
 #include "BluetoothA2DPSink.h"
-#include "esp_rom_gpio.h"
 
 BluetoothA2DPSink a2dp_sink;
 
@@ -52,49 +51,62 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
 }
 
 // HFP
-//
-// Configure HFP PCM audio pins (set to I2S DAC pins)
-#define GPIO_OUTPUT_PCM_FSYNC      (25)
-#define GPIO_OUTPUT_PCM_CLK_OUT    (26)
-#define GPIO_OUTPUT_PCM_DOUT       (22)
-#define GPIO_OUTPUT_PCM_PIN_SEL  ((1ULL<<GPIO_OUTPUT_PCM_FSYNC) | (1ULL<<GPIO_OUTPUT_PCM_CLK_OUT) | (1ULL<<GPIO_OUTPUT_PCM_DOUT))
+static uint32_t control_num = 0;
+#define ESP_HFP_RINGBUF_SIZE 3600
+#define BTM_SCO_XMIT_QUEUE_THRS 30
+#define BTM_SCO_DATA_SIZE_MAX 240
 
-// Enables HFP PCM audio
-void app_gpio_pcm_io_cfg(void)
+static void bt_app_hf_client_audio_open(esp_hf_client_audio_state_t state)
 {
-    gpio_config_t io_conf;
-    /// configure the PCM output pins
-    //disable interrupt
-    io_conf.intr_type = GPIO_INTR_DISABLE;
-    //set as output mode
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    //bit mask of the pins that you want to set,e.g.GPIO18/19
-    io_conf.pin_bit_mask = GPIO_OUTPUT_PCM_PIN_SEL;
-    //disable pull-down mode
-    io_conf.pull_down_en = (gpio_pulldown_t)0;
-    //disable pull-up mode
-    io_conf.pull_up_en = (gpio_pullup_t)0;
-    //configure GPIO with the given settings
-    gpio_config(&io_conf);
-
-    /// matrix out | in the internal PCM signals to the GPIOs
-    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_FSYNC, PCMFSYNC_OUT_IDX, false, false);
-    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_CLK_OUT, PCMCLK_OUT_IDX, false, false);
-    esp_rom_gpio_connect_out_signal(GPIO_OUTPUT_PCM_DOUT, PCMDOUT_IDX, false, false);
+    // When in call with CVSD codec - set DAC to 32bit 8kHz mono
+    if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED)
+    {
+      i2s_set_clk(I2S_NUM_0, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
+      i2s_set_clk(I2S_NUM_1, 8000, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
+    }
+    // When in call with mSBC codec - set DAC to 32bit 16kHz mono and mic to 16bit 16kHz mono
+    else if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC)
+    {
+      i2s_set_clk(I2S_NUM_0, 16000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
+      i2s_set_clk(I2S_NUM_1, 16000, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
+    }
 }
 
-// Disables HFP PCM audio by resetting I2S pins and port back to defaults
-void app_gpio_pcm_io_decfg(void)
+static void bt_app_hf_client_audio_close(void)
 {
-  static const i2s_port_t i2s_num = I2S_NUM_0; // i2s port number
-	static const i2s_pin_config_t pin_config = {
-		.bck_io_num = 26,
-		.ws_io_num = 25,
-		.data_out_num = 22,
-		.data_in_num = I2S_PIN_NO_CHANGE
-	};
-	i2s_set_pin(i2s_num, &pin_config);
+    // When call is done - reset DAC and Mic to default of 16bit 44.1kHz stereo for A2DP audio
+    i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+    i2s_set_clk(I2S_NUM_1, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 }
+
+static uint32_t bt_app_hf_client_outgoing_cb(uint8_t *p_buf, uint32_t sz)
+{
+    // Read data from I2S mic
+    size_t i2s_bytes_read = 0;
+    i2s_read(I2S_NUM_1, p_buf, sz, &i2s_bytes_read, portMAX_DELAY);
+
+    // Send mic data to phone via SCO vHCI
+    return sz;
+}
+
+static void bt_app_hf_client_incoming_cb(const uint8_t *buf, uint32_t sz)
+{
+    // Read data from SCO vHCI and write it to I2S DAC (while expanding 32bit to 16bit)
+    // Expanding bits from 32 to 16bit is necessary - otherwise the audio sounds bad
+    size_t i2s_bytes_written = 0;
+    i2s_write_expand(I2S_NUM_0, buf, sz, I2S_BITS_PER_SAMPLE_16BIT, I2S_BITS_PER_SAMPLE_32BIT, &i2s_bytes_written, portMAX_DELAY);
+
+    // Wait for a bit before setting data as ready.
+    // This should fix the packet pace mismatch
+    if (control_num < 5) {
+        control_num ++;
+    }
+    else {
+        control_num = 0;
+        esp_hf_client_outgoing_data_ready();
+    }
+}
+
 
 static const char *BT_HF_TAG = "BT_HF";
 const char *c_hf_evt_str[] = {
@@ -148,27 +160,27 @@ void bt_hf_client_cb(esp_hf_client_cb_event_t event, esp_hf_client_cb_param_t *p
         ESP_LOGE(BT_HF_TAG, "--Call setup indicator %s",
                  c_call_setup_str[param->call_setup.status]);
         // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_hf_defs.html#_CPPv426esp_hf_call_setup_status_t
+        //
+        // Call status for answer/reject call logic
         // While in call, the status is ESP_HF_CALL_SETUP_STATUS_INCOMING (1)
         // While there is no call, the status is ESP_HF_CALL_SETUP_STATUS_IDLE (0)
         if(param->call_setup.status == 1) inCall = 1;
         if(param->call_setup.status == 0) inCall = 0;
         break;
-      case ESP_HF_CLIENT_AUDIO_STATE_EVT:
-        {
-            ESP_LOGI(BT_HF_TAG, "--audio state %s",
-                    c_audio_state_str[param->audio_stat.state]);
-	#if CONFIG_BT_HFP_AUDIO_DATA_PATH_PCM
-			      // If in call, enable HFP PCM audio
-            if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED ||
-                param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC) {
-                app_gpio_pcm_io_cfg();
-			      // If not in call, disable HFP PCM audio by resetting I2S
-            } else if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_DISCONNECTED) {
-				        app_gpio_pcm_io_decfg();
-            }
-	#endif
-            break;
+    case ESP_HF_CLIENT_AUDIO_STATE_EVT:
+        ESP_LOGI(BT_HF_TAG, "--audio state %s",
+                 c_audio_state_str[param->audio_stat.state]);
+			  // If in call, enable HFP audio
+        if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED ||
+            param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC) {
+            bt_app_hf_client_audio_open(param->audio_stat.state);
+            esp_hf_client_register_data_callback(bt_app_hf_client_incoming_cb,
+                                                 bt_app_hf_client_outgoing_cb);
+        // If not in call, set default DAC A2DP config
+        } else if (param->audio_stat.state == ESP_HF_CLIENT_AUDIO_STATE_DISCONNECTED) {
+				    bt_app_hf_client_audio_close();
         }
+        break;
     }
 }
 
@@ -200,7 +212,29 @@ void setup() {
       .use_apll = true,
       .tx_desc_auto_clear = true
     };
-    a2dp_sink.set_i2s_config(i2s_config);
+  a2dp_sink.set_i2s_config(i2s_config);
+
+  // Setup INMP441 Microphone
+  const i2s_config_t i2s_mic_config = {
+    .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX),
+    .sample_rate = 44100,
+    .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+    .channel_format = I2S_CHANNEL_FMT_ALL_LEFT,
+    .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
+    .intr_alloc_flags = 0, // default interrupt priority
+    .dma_buf_count = 8,
+    .dma_buf_len = 64,
+    .use_apll = true
+  };
+  i2s_driver_install(I2S_NUM_1, &i2s_mic_config, 0, NULL);
+
+  const i2s_pin_config_t mic_pin_config = {
+    .bck_io_num = 16,
+    .ws_io_num = 17,
+    .data_out_num = -1,
+    .data_in_num = 21
+  };
+  i2s_set_pin(I2S_NUM_1, &mic_pin_config);
 
   // Enable auto-reconnect
   // See for details: https://github.com/pschatzmann/ESP32-A2DP/wiki/Auto-Reconnect
