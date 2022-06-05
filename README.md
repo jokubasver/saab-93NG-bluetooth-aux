@@ -5,6 +5,11 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
 - Bluetooth music playback through the wired aux port
   - Bluetooth Auto-Reconnect feature (when entering the car, or after signal loss)
   - Play audio immediately after connecting/reconnecting to phone
+- HFP Audio support
+  - Uses a custom Arduino ESP32 v2.0.3 core that brings in support for HFP audio
+  - Switches automatically from A2DP to HFP audio when in call
+  - Supports CVSD and mSBC codecs
+  - I2S microphone support - tested with INMP441 (currently doesn't sound nice, needs fixing)
 - Steering wheel button controls
   - Play / Pause
   - Next / Previous
@@ -28,6 +33,12 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
   - Also handles CAN bus messages, for steering wheel Play/Pause/Next/Previous
   
 # Notes for building your own (by [jokubasver](https://github.com/jokubasver))
+- INMP441 microphone pin connections to ESP32:
+  - SCK - pin 16
+  - WS - pin 17
+  - SD - pin 21
+  - L/R - GND
+
 - CAN H connects to LS GMLAN1 (green wire, it can be found on the ICM connector pin 1, or solder directly to ICM connector PCB pad).
 - CAN L connects to GND
 - Connect a 4.7k resistor between CAN H and CAN L
