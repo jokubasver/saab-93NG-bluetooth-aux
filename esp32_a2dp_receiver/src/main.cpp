@@ -65,6 +65,9 @@ static uint32_t control_num = 0;
 
 static void bt_app_hf_client_audio_open(esp_hf_client_audio_state_t state)
 {
+    // Pause A2DP audio
+    a2dp_sink.pause();
+    
     // When in call with CVSD codec - set DAC to 32bit 8kHz mono
     if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED)
     {
@@ -84,6 +87,12 @@ static void bt_app_hf_client_audio_close(void)
     // When call is done - reset DAC and Mic to default of 16bit 44.1kHz stereo for A2DP audio
     i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
     i2s_set_clk(I2S_NUM_1, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+
+    // Resume A2DP audio
+    if (timer_1000ms.TRIGGERED)
+    {
+      a2dp_sink.play();
+    }
 }
 
 static uint32_t bt_app_hf_client_outgoing_cb(uint8_t *p_buf, uint32_t sz)
