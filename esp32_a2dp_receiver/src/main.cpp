@@ -5,6 +5,7 @@
 #include "soc/rtc.h"
 #include <Wire.h>
 #include "BluetoothA2DPSink.h"
+#include <BlockNot.h>
 
 BluetoothA2DPSink a2dp_sink;
 
@@ -27,6 +28,10 @@ struct can_frame canMsg;
 MCP2515 mcp2515(5);
 #endif
 
+// Non-blocking timers
+BlockNot timer_1000ms(1000);
+BlockNot timer_50ms(50);
+
 // I2C Pins
 // ws_io_num => GPIO 25,
 // data_out_num => GPIO 22
@@ -45,8 +50,10 @@ void avrc_metadata_callback(uint8_t data1, const uint8_t *data2) {
 
 void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
   if(state == ESP_A2D_CONNECTION_STATE_CONNECTED){
-    delay(1000);
-    a2dp_sink.play();
+    if (timer_1000ms.TRIGGERED)
+    {
+      a2dp_sink.play();
+    }
   }
 }
 
@@ -295,8 +302,10 @@ void loop() {
         muteState = false;
         // Reinit to prevent glitchy noise
         // Set digital mute off.
-        delay(50);
-        digitalWrite(mutePin, 0);
+        if (timer_50ms.TRIGGERED)
+        {
+          digitalWrite(mutePin, 0);
+        }
       }
     }else{
       muteState = true;
