@@ -254,6 +254,10 @@ void setup() {
   a2dp_sink.set_swap_lr_channels(true);
   #endif
 
+  // Bluetooth power level
+  // Setting to max of +9 dBm should improve auto reconnect, as the BT range should be longer with higher TX power
+  esp_bredr_tx_power_set(ESP_PWR_LVL_P9, ESP_PWR_LVL_P9);
+
   // Start the A2DP sink
   a2dp_sink.start("Saab 9-3");  
 
