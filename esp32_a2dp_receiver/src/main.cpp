@@ -50,10 +50,7 @@ void avrc_metadata_callback(uint8_t data1, const uint8_t *data2) {
 
 void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
   if(state == ESP_A2D_CONNECTION_STATE_CONNECTED){
-    if (timer_1000ms.TRIGGERED)
-    {
-      a2dp_sink.play();
-    }
+    a2dp_sink.play();
   }
 }
 
