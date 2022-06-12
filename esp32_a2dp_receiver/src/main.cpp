@@ -78,7 +78,7 @@ static void bt_app_hf_client_audio_close(void)
 {
     // When call is done - reset DAC and Mic to default of 16bit 44.1kHz stereo for A2DP audio
     i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-    i2s_set_clk(I2S_NUM_1, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+    //i2s_set_clk(I2S_NUM_1, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
 }
 
 // 16 and 32 bit mic buffers
