@@ -5,11 +5,11 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
 - Bluetooth music playback through the wired aux port
   - Bluetooth Auto-Reconnect feature (when entering the car, or after signal loss)
   - Play audio immediately after connecting/reconnecting to phone
-- HFP Audio support
+- HFP (Hands Free Profile) Audio support
   - Uses a custom Arduino ESP32 v2.0.3 core that brings in support for HFP audio
   - Switches automatically from A2DP to HFP audio when in call
   - Supports CVSD and mSBC codecs
-  - I2S microphone support - tested with INMP441 (currently doesn't sound nice, needs fixing)
+  - I2S microphone support - tested with INMP441
 - Steering wheel button controls
   - Play / Pause
   - Next / Previous
