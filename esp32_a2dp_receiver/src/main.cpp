@@ -58,27 +58,19 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
 }
 
 // HFP
-static uint32_t control_num = 0;
-#define ESP_HFP_RINGBUF_SIZE 3600
-#define BTM_SCO_XMIT_QUEUE_THRS 30
-#define BTM_SCO_DATA_SIZE_MAX 240
-
 static void bt_app_hf_client_audio_open(esp_hf_client_audio_state_t state)
 {
-    // Pause A2DP audio
-    a2dp_sink.pause();
-    
-    // When in call with CVSD codec - set DAC to 32bit 8kHz mono
+    // When in call with CVSD codec - set DAC and Mic to 32bit 8kHz mono
     if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED)
     {
       i2s_set_clk(I2S_NUM_0, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
-      i2s_set_clk(I2S_NUM_1, 8000, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
+      i2s_set_clk(I2S_NUM_1, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
     }
-    // When in call with mSBC codec - set DAC to 32bit 16kHz mono and mic to 16bit 16kHz mono
+    // When in call with mSBC codec - set DAC and Mic to 32bit 16kHz mono
     else if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC)
     {
       i2s_set_clk(I2S_NUM_0, 16000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
-      i2s_set_clk(I2S_NUM_1, 16000, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
+      i2s_set_clk(I2S_NUM_1, 16000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
     }
 }
 
@@ -87,22 +79,36 @@ static void bt_app_hf_client_audio_close(void)
     // When call is done - reset DAC and Mic to default of 16bit 44.1kHz stereo for A2DP audio
     i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
     i2s_set_clk(I2S_NUM_1, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-
-    // Resume A2DP audio
-    if (timer_1000ms.TRIGGERED)
-    {
-      a2dp_sink.play();
-    }
 }
 
-static uint32_t bt_app_hf_client_outgoing_cb(uint8_t *p_buf, uint32_t sz)
+// 16 and 32 bit mic buffers
+// Buffer size is determined by the SCO data size, which is 120
+// DMA buffer is set to the same value, but DMA buffer size also works with different values.
+uint32_t mic_buf[120];
+uint16_t mic_buf_16bit[120];
+
+static uint32_t bt_app_hf_client_outgoing_cb(uint8_t p_buf[120], uint32_t mic_sz)
 {
     // Read data from I2S mic
     size_t i2s_bytes_read = 0;
-    i2s_read(I2S_NUM_1, p_buf, sz, &i2s_bytes_read, portMAX_DELAY);
+    i2s_read(I2S_NUM_1, mic_buf, mic_sz * sizeof(uint16_t), &i2s_bytes_read, 0);
 
-    // Send mic data to phone via SCO vHCI
-    return sz;
+    // Convert 32 bit mic samples to 16 bit
+    if (mic_sz > 0)
+    {
+        for (int i = 0; i < mic_sz; i++)
+        {
+            // in theory we should shift to the right by 16 bits, but MEMS microphones have a very
+            // high dynamic range, so if we shift all the way we lose a lot of signal.
+            // Therefore we shift by 11 bits.
+            mic_buf_16bit[i] = mic_buf[i] >> 11;
+        }
+    }
+
+    // Copy our local 16 bit buffer into the HFP outgoing callback buffer
+    memcpy((uint8_t *)p_buf, (uint16_t *)mic_buf_16bit, (uint32_t)mic_sz);
+
+    return (uint32_t)mic_sz;
 }
 
 static void bt_app_hf_client_incoming_cb(const uint8_t *buf, uint32_t sz)
@@ -110,17 +116,10 @@ static void bt_app_hf_client_incoming_cb(const uint8_t *buf, uint32_t sz)
     // Read data from SCO vHCI and write it to I2S DAC (while expanding 32bit to 16bit)
     // Expanding bits from 32 to 16bit is necessary - otherwise the audio sounds bad
     size_t i2s_bytes_written = 0;
-    i2s_write_expand(I2S_NUM_0, buf, sz, I2S_BITS_PER_SAMPLE_16BIT, I2S_BITS_PER_SAMPLE_32BIT, &i2s_bytes_written, portMAX_DELAY);
+    i2s_write_expand(I2S_NUM_0, buf, sz, I2S_BITS_PER_SAMPLE_16BIT, I2S_BITS_PER_SAMPLE_32BIT, &i2s_bytes_written, 0);
 
-    // Wait for a bit before setting data as ready.
-    // This should fix the packet pace mismatch
-    if (control_num < 5) {
-        control_num ++;
-    }
-    else {
-        control_num = 0;
-        esp_hf_client_outgoing_data_ready();
-    }
+    // Data is ready
+    esp_hf_client_outgoing_data_ready();
 }
 
 
@@ -224,7 +223,7 @@ void setup() {
       .communication_format = (i2s_comm_format_t) (I2S_COMM_FORMAT_STAND_I2S),
       .intr_alloc_flags = 0, // default interrupt priority
       .dma_buf_count = 8,
-      .dma_buf_len = 64,
+      .dma_buf_len = 120,
       .use_apll = true,
       .tx_desc_auto_clear = true
     };
@@ -239,7 +238,7 @@ void setup() {
     .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_STAND_I2S),
     .intr_alloc_flags = 0, // default interrupt priority
     .dma_buf_count = 8,
-    .dma_buf_len = 64,
+    .dma_buf_len = 120,
     .use_apll = true
   };
   i2s_driver_install(I2S_NUM_1, &i2s_mic_config, 0, NULL);
