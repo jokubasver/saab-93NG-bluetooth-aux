@@ -339,15 +339,19 @@ void loop() {
       case 0x5:
         Serial.println("NEXT");
         a2dp_sink.next();
-        delay(50);
         //NEXT
-        break;
+        if (timer_50ms.TRIGGERED)
+        {
+          break;
+        }
       case 0x6:
         Serial.println("PREV");
         a2dp_sink.previous();
-        delay(50);
         //PREV
-        break;
+        if (timer_50ms.TRIGGERED)
+        {
+          break;
+        }
       case 0x11:
         Serial.println("PLAY/PAUSE");
         if (playingStateRequest)
@@ -360,9 +364,11 @@ void loop() {
         }
         // Update the boolean
         playingStateRequest = !playingStateRequest;
-        delay(50);
         //PLAY/PAUSE
-        break;
+        if (timer_50ms.TRIGGERED)
+        {
+          break;
+        }
 
       // ESP HF Client
       // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_hf_client.html
@@ -372,8 +378,10 @@ void loop() {
         Serial.println("VOICE REQ");
         if(millis() - lastVoiceReqTime > voiceReqFreq){
           esp_hf_client_start_voice_recognition();
-          delay(50);
-          lastVoiceReqTime = millis();
+          if (timer_50ms.TRIGGERED)
+          {
+            lastVoiceReqTime = millis();
+          }
         }
 
       // Answer/reject phone call
@@ -382,15 +390,19 @@ void loop() {
         {
           Serial.println("ANSWER CALL");
           esp_hf_client_answer_call();
-          delay(50);
-          break;
+          if (timer_50ms.TRIGGERED)
+          {
+            break;
+          }
         }
         if(inCall == 1)
         {
           Serial.println("REJECT CALL");
           esp_hf_client_reject_call();
-          delay(50);
-          break;
+          if (timer_50ms.TRIGGERED)
+          {
+            break;
+          }
         }
       }
     }
