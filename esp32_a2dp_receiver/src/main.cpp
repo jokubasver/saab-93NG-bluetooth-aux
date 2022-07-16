@@ -80,6 +80,8 @@ static void bt_app_hf_client_audio_close(void)
 // DMA buffer is set to the same value, but DMA buffer size also works with different values.
 uint32_t mic_buf[120];
 uint16_t mic_buf_16bit[120];
+uint32_t dac_buf[120];
+uint16_t dac_buf_16bit[120];
 
 static uint32_t bt_app_hf_client_outgoing_cb(uint8_t p_buf[120], uint32_t mic_sz)
 {
@@ -105,17 +107,28 @@ static uint32_t bt_app_hf_client_outgoing_cb(uint8_t p_buf[120], uint32_t mic_sz
     return (uint32_t)mic_sz;
 }
 
-static void bt_app_hf_client_incoming_cb(const uint8_t *buf, uint32_t sz)
+static void bt_app_hf_client_incoming_cb(const uint8_t buf[120], uint32_t dac_sz)
 {
-    // Read data from SCO vHCI and write it to I2S DAC (while expanding 32bit to 16bit)
-    // Expanding bits from 32 to 16bit is necessary - otherwise the audio sounds bad
+    // Copy HFP incoming callback buffer buffer into our local 16 bit buffer
+    memcpy((uint16_t *)dac_buf_16bit, (uint8_t *)buf, (uint32_t)dac_sz);
+    
+    // Convert 16 bit DAC samples to 32 bit
+    if (dac_sz > 0)
+    {
+        for (int i = 0; i < dac_sz; i++)
+        {
+            // Shift by 16 bits
+            dac_buf[i] = dac_buf_16bit[i] << 16;
+        }
+    }
+
+    // Write to I2S
     size_t i2s_bytes_written = 0;
-    i2s_write_expand(I2S_NUM_0, buf, sz, I2S_BITS_PER_SAMPLE_16BIT, I2S_BITS_PER_SAMPLE_32BIT, &i2s_bytes_written, 0);
+    i2s_write(I2S_NUM_0, dac_buf, dac_sz * sizeof(uint16_t), &i2s_bytes_written, 0);
 
     // Data is ready
     esp_hf_client_outgoing_data_ready();
 }
-
 
 static const char *BT_HF_TAG = "BT_HF";
 const char *c_hf_evt_str[] = {
