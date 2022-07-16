@@ -54,17 +54,18 @@ void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
 // HFP
 static void bt_app_hf_client_audio_open(esp_hf_client_audio_state_t state)
 {
-    // When in call with CVSD codec - set DAC and Mic to 32bit 8kHz mono
-    if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED)
-    {
-      i2s_set_clk(I2S_NUM_0, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
-      i2s_set_clk(I2S_NUM_1, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
-    }
     // When in call with mSBC codec - set DAC and Mic to 32bit 16kHz mono
-    else if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC)
+    if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED_MSBC)
     {
       i2s_set_clk(I2S_NUM_0, 16000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
       i2s_set_clk(I2S_NUM_1, 16000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
+    }
+    
+    // When in call with CVSD codec - set DAC and Mic to 32bit 8kHz mono
+    else if (state == ESP_HF_CLIENT_AUDIO_STATE_CONNECTED)
+    {
+      i2s_set_clk(I2S_NUM_0, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
+      i2s_set_clk(I2S_NUM_1, 8000, I2S_BITS_PER_SAMPLE_32BIT, I2S_CHANNEL_MONO);
     }
 }
 
