@@ -13,10 +13,16 @@ BluetoothA2DPSink a2dp_sink;
 // Enable steering wheel controls via CAN
 #define USE_CAN
 
+// Enable auto-switching to Aux with the help of SID CAN-UART
+// Auto-switching only happens when we are connected to Bluetooth
+// Requires USE_CAN
+#define USE_SID_UART
+
 // Enable Bluetooth auto-reconnect
 #define BT_AUTO_RECONNECT
 
 // Start playing audio immediately after connecting/reconnecting to phone
+// If using USE_SID_UART, audio plays only when we are in Aux mode
 #define RESUME_AUDIO_ON_CONNECTION
 
 // Swap left/right audio channels due to this bug: https://github.com/espressif/esp-idf/issues/3399
@@ -25,11 +31,24 @@ BluetoothA2DPSink a2dp_sink;
 
 #ifdef USE_CAN
 struct can_frame canMsg;
+struct can_frame src_frame;
 MCP2515 mcp2515(5);
 #endif
 
+#ifdef USE_SID_UART
+// SID CAN UART pins
+#define RXD2 33
+#define TXD2 32
 
-// I2C Pins
+// Aux mode message
+const char auxPlayMsg[] = {0xFF,0x0,0x1,0x8,0x11,0x0,0x1,0x0,0x2,0x94,0x2,0x0,0xB2,0x2,0xFF};
+
+int auxPlayMatchIndex = 0;
+int doOnce = 0;
+BlockNot ibusDelay(1000);
+#endif
+
+// I2S Pins
 // ws_io_num => GPIO 25,
 // data_out_num => GPIO 22
 // bck_io_num => GPIO 26,
@@ -47,7 +66,16 @@ void avrc_metadata_callback(uint8_t data1, const uint8_t *data2) {
 
 void connection_state_changed(esp_a2d_connection_state_t state, void *ptr){
   if(state == ESP_A2D_CONNECTION_STATE_CONNECTED){
+    Serial.println("Bluetooth connected!");
+#ifndef USE_SID_UART
+#ifdef RESUME_AUDIO_ON_CONNECTION
     a2dp_sink.play();
+    Serial.println("Playing audio");
+#endif
+#endif
+  }
+  else{
+    Serial.println("Bluetooth not connected!");
   }
 }
 
@@ -213,13 +241,28 @@ void setup() {
 
   pinMode(mutePin, OUTPUT);
 
-  // Setup CAN
   #ifdef USE_CAN
+  // Setup CAN
   SPI.begin();
   mcp2515.reset();
   mcp2515.setBitrate(CAN_33KBPS, CAN_CLOCK::MCP_8MHZ);
   mcp2515.setNormalMode();
-  #endif
+#endif
+
+#ifdef USE_SID_UART
+  // Steering Wheel SRC button CAN commands
+  src_frame.can_id = 0x290;
+  src_frame.can_dlc = 5;
+  src_frame.data[0] = 0x00;
+  src_frame.data[1] = 0x00;
+  src_frame.data[2] = 0x19;
+  src_frame.data[3] = 0x03;
+  src_frame.data[4] = 0x00;
+
+  // Enable Serial2 for SID CAN-UART
+  Serial2.begin(115200, SERIAL_8N1, RXD2, TXD2);
+  //pinMode(TXD2, OUTPUT);
+#endif
 
   // Setup UDA1334A DAC
   static const i2s_config_t i2s_config = {
@@ -299,7 +342,7 @@ String lastContent = "";
 long playTime = 0;
 
 void loop() {
-  // Check if we have connection
+  // If not connected to Bluetooth
   if (a2dp_sink.get_connection_state() != ESP_A2D_CONNECTION_STATE_CONNECTED)
   {
     // Set digital mute ON and do not handle events.
@@ -308,10 +351,56 @@ void loop() {
     muteState = true;
     playingState = false;
 
+#ifdef USE_SID_UART
+    // If not connected to Bluetooth, reset Aux auto-switch loop
+    doOnce = 0;
+#endif
+
     return;
   }
+  // If connected to Bluetooth
   else
   {
+#ifdef USE_SID_UART
+    if(Serial2.available()){
+      // read the incoming byte:
+      char d = Serial2.read();
+
+      if(doOnce == 0){
+        // Check for match with the aux 'play' msg
+        if(d == auxPlayMsg[auxPlayMatchIndex]){
+          // If we are done matching
+          if(auxPlayMatchIndex == 14){
+            // Matched the last char
+            Serial.println("Aux mode detected!");
+
+            // Reset aux play match
+            auxPlayMatchIndex = 0;
+
+            // Play audio
+#ifdef RESUME_AUDIO_ON_CONNECTION
+            a2dp_sink.play();
+            Serial.println("Playing audio");
+#endif
+
+            // Stop the loop
+            doOnce = 1;
+          }else{
+            auxPlayMatchIndex++;
+          }
+        }else{
+          auxPlayMatchIndex = 0;
+
+          // Send SRC button press message via I-BUS every second until we are in Aux mode
+          if(ibusDelay.TRIGGERED){
+            Serial.println("Sending SRC button command via I-Bus!");
+            mcp2515.sendMessage(&src_frame);
+          }
+        }
+      }
+    }
+#endif
+
     // Wait until playing again
     if (playingState)
     {
