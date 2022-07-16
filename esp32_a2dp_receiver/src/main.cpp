@@ -247,7 +247,7 @@ void setup() {
   // Enable auto-reconnect
   // See for details: https://github.com/pschatzmann/ESP32-A2DP/wiki/Auto-Reconnect
   #ifdef BT_AUTO_RECONNECT
-  a2dp_sink.set_auto_reconnect(true, false, 1000);
+  a2dp_sink.set_auto_reconnect(true);
   #endif
 
   // Swap audio channels due to this bug: https://github.com/espressif/esp-idf/issues/3399
