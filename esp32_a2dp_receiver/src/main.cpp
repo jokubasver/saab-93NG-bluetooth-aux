@@ -28,9 +28,6 @@ struct can_frame canMsg;
 MCP2515 mcp2515(5);
 #endif
 
-// Non-blocking timers
-BlockNot timer_1000ms(1000);
-BlockNot timer_50ms(50);
 
 // I2C Pins
 // ws_io_num => GPIO 25,
@@ -286,8 +283,6 @@ bool playingState = false;
 String lastContent = "";
 
 long playTime = 0;
-uint32_t lastVoiceReqTime = millis();
-uint32_t voiceReqFreq = 1000;
 
 void loop() {
   // Check if we have connection
@@ -310,15 +305,14 @@ void loop() {
         muteState = false;
         // Reinit to prevent glitchy noise
         // Set digital mute off.
-        if (timer_50ms.TRIGGERED)
-        {
-          digitalWrite(mutePin, 0);
-        }
+        digitalWrite(mutePin, 0);
       }
     }else{
       muteState = true;
     }
   }
+
+
 
 // Read messages
 // 
@@ -340,18 +334,12 @@ void loop() {
         Serial.println("NEXT");
         a2dp_sink.next();
         //NEXT
-        if (timer_50ms.TRIGGERED)
-        {
-          break;
-        }
+        break;
       case 0x6:
         Serial.println("PREV");
         a2dp_sink.previous();
         //PREV
-        if (timer_50ms.TRIGGERED)
-        {
-          break;
-        }
+        break;
       case 0x11:
         Serial.println("PLAY/PAUSE");
         if (playingStateRequest)
@@ -365,10 +353,7 @@ void loop() {
         // Update the boolean
         playingStateRequest = !playingStateRequest;
         //PLAY/PAUSE
-        if (timer_50ms.TRIGGERED)
-        {
-          break;
-        }
+        break;
 
       // ESP HF Client
       // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/bluetooth/esp_hf_client.html
@@ -376,33 +361,21 @@ void loop() {
       // Voice Recognition
       case 0x04:
         Serial.println("VOICE REQ");
-        if(millis() - lastVoiceReqTime > voiceReqFreq){
-          esp_hf_client_start_voice_recognition();
-          if (timer_50ms.TRIGGERED)
-          {
-            lastVoiceReqTime = millis();
-          }
-        }
-
+        esp_hf_client_start_voice_recognition();
+        break;
       // Answer/reject phone call
       case 0x12:
         if(inCall == 0)
         {
           Serial.println("ANSWER CALL");
           esp_hf_client_answer_call();
-          if (timer_50ms.TRIGGERED)
-          {
-            break;
-          }
+          break;
         }
         if(inCall == 1)
         {
           Serial.println("REJECT CALL");
           esp_hf_client_reject_call();
-          if (timer_50ms.TRIGGERED)
-          {
-            break;
-          }
+          break;
         }
       }
     }
