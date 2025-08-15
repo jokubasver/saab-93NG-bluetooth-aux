@@ -39,14 +39,19 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
   - WS - pin 17
   - SD - pin 21
   - L/R - GND
+  - Microphone support is experimental and quite buggy.
 
-- CAN H connects to LS GMLAN1 (green wire, it can be found on the ICM connector pin 1, or solder directly to ICM connector PCB pad).
-- CAN L connects to GND
-- Connect a 4.7k resistor between CAN H and CAN L
-  - So to make it simple - Since the whole Bluetooth Aux board is getting GND from the AUX connection, I connected GND from the MCP2515 module to CAN L, and I connected a 4.7k resistor across CAN H and CAN L on the MCP2515 module.
+- I-Bus connections:
+  - CAN H connects to LS GMLAN1 (green wire, it can be found on the ICM connector pin 1, or solder directly to ICM connector PCB pad).
+  - CAN L connects to GND
+  - Connect a 4.7k resistor between CAN H and CAN L
 
-- Everything also works if I leave CAN L disconnected and not use the 4.7k resistor. CAN L can be left floating as described here: https://electronics.stackexchange.com/questions/139562/single-wire-can-saab-9-3-i-bus-gmlan#comment670941_139882
-  - Question is - which is the proper way? Leave out the terminating resistor and leave CAN L floating? Or connect CAN L to GND and use a 4.7k terminating resistor? Both connection variants seem to work fine.
+- For Auto Aux switching, you will need to build an extra circuit:
+  - <img width="1426" height="1630" alt="image" src="https://github.com/user-attachments/assets/c49c2320-3353-4fbe-ac44-fa4defc95590" />
+  - This is the circuit I used on my prototype, though it's probably better to use an SN65HVD230DR connected to 3.3V instead of 5V.
+  - C D Bus is the communication channel between the ICM and SID - it is UART over CAN.
+  - ESP32 looks for the "AUX" string in the SID display - if Bluetooth is connected, CD button presses are sent via I-Bus until the SID displays "AUX".
+
 
 - Instead of using 12V, the EHU 5V line can be used.
   - It turns off after ~10-15 seconds after locking the car with the remote. 
