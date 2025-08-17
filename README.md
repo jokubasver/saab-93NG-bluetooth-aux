@@ -45,6 +45,7 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
   - CAN H connects to LS GMLAN1 (green wire, it can be found on the ICM connector pin 1, or solder directly to ICM connector PCB pad).
   - CAN L connects to GND
   - Connect a 4.7k resistor between CAN H and CAN L
+  - If connection is unreliable, or if the ESP32 freezes - try leaving CAN L floating and disconnect the resistor.
 
 - For Auto Aux switching, you will need to build an extra circuit:
   - <img width="1426" height="1630" alt="image" src="https://github.com/user-attachments/assets/c49c2320-3353-4fbe-ac44-fa4defc95590" />
@@ -58,7 +59,9 @@ A module to augment the Aux-In functionality of SAAB 93NG's (2002/3+), to add Bl
   - 5V wakes up as soon as you unlock the car.
   - This requires the use of an isolated 5V-5V DC-DC converter (see below)
 
-- 5V, GND, AUX Left, AUX right can be soldered on the EHU PCB. All pads are clearly marked.
+- 5V, GND, AUX Left, AUX right can be soldered on the EHU PCB. All pads are clearly marked:
+- <img width="1200" height="1600" alt="128476431-3756da6e-83ff-4f5b-8169-b65d09f547a4" src="https://github.com/user-attachments/assets/d1efcf97-d306-4dd2-bf78-013945a0ac96" />
+- <img width="1200" height="1600" alt="128475600-fccb96eb-5737-41b3-a692-3691a5302de4" src="https://github.com/user-attachments/assets/d70ec4a9-9552-4132-be53-cf4eb4a897f5" />
 
 - Using EHU 5V will cause some audible Bluetooth interference. 
   - Use an isolated 5V-5V DC-DC converter to eliminate it (CC3-0505SF-E would be pin-compatible and would fit nicely on the bluetooth aux kit PCB)
